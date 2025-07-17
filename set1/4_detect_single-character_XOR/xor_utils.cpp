@@ -82,7 +82,6 @@ std::vector<std::string> singleByteXORFreqAnalysis(const std::string& encodedStr
 std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2threshold, double printableCharTreshhold, bool additionalInfo)
 {
     std::vector<std::string> candidateStrings;
-    std::string finalStr;
     double lowestFitQuotResult = 1e9;
     int bestKey = -1;
     for (int i = 0; i < 256; i++) {
@@ -112,12 +111,6 @@ std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2thr
                 candidateStrings.push_back(info);
             }
             candidateStrings.push_back(tempStr);
-        }
-
-        if (fitQuotResult < lowestFitQuotResult) {
-            lowestFitQuotResult = fitQuotResult;
-            finalStr = tempStr;
-            bestKey = i;
         }
     }
     return candidateStrings;
