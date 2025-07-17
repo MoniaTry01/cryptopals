@@ -103,9 +103,11 @@ std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2thr
             if (additionalInfo) {
                 std::string info = "\nOriginal string (ASCII): " + inputStr;
                 candidateStrings.push_back(info);
-                info = "Original string: (HEX): " + ASCII2hex(inputStr);
+                info = "Original string (HEX): " + ASCII2hex(inputStr);
                 candidateStrings.push_back(info);
                 info = "Key (dec): " + std::to_string(i);
+                candidateStrings.push_back(info);
+                info = "Chi^2: " + std::to_string(fitQuotResult);
                 candidateStrings.push_back(info);
             }
             candidateStrings.push_back(tempStr);
