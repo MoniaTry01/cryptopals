@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <iostream>
 
 //=============================================
 // Fixed XOR of two equal-length hex strings
@@ -13,11 +14,11 @@
 //      Hex string representing XOR combination of inputs
 //=============================================
 
-std::string fixedXOR(const std::string& hexString1, const std::string& hexString2)
+std::string XOR_xorEqualHexString(std::string_view hexString1, std::string_view hexString2)
 {
     std::string binString1 = hex2bin(hexString1);
     std::string binString2 = hex2bin(hexString2);
-    std::string xorBinString = binStringXOR(binString1, binString2);
+    std::string xorBinString = XOR_xorEqualBinString(binString1, binString2);
     std::string xorHexString = bin2hex(xorBinString);
     return xorHexString;
 }
@@ -30,7 +31,7 @@ std::string fixedXOR(const std::string& hexString1, const std::string& hexString
 //      Binary string representing XOR combination of inputs
 //=============================================
 
-std::string binStringXOR(const std::string& binString1, const std::string& binString2) {
+std::string XOR_xorEqualBinString(std::string_view binString1, std::string_view binString2) {
 
     size_t len = std::min(binString1.length(), binString2.length());
     std::string xorString(len, '0');
@@ -59,10 +60,10 @@ std::string binStringXOR(const std::string& binString1, const std::string& binSt
 //     If result is incorrect, please check if correct string is among candidate strings
 //=============================================
 
-std::vector<std::string> singleByteXORFreqAnalysis(const std::string& encodedStr, int chi2threshold, double printableCharTreshhold, bool additionalInfo)
+std::vector<std::string> XOR_singleByteFreqAnalysis(std::string_view encodedStr, int chi2threshold, double printableCharTreshhold, bool additionalInfo, bool onlyBestFit)
 {
-    std::string asciiStr = hex2ASCII(encodedStr);
-    std::vector<std::string> decodedStrings = iterateXORKeys(asciiStr, chi2threshold, printableCharTreshhold, additionalInfo);
+    std::string asciiStr = hex2ascii(encodedStr);
+    std::vector<std::string> decodedStrings = XOR_iterateKeys_str(asciiStr, chi2threshold, printableCharTreshhold, additionalInfo, onlyBestFit);
     return decodedStrings;
 }
 
@@ -75,12 +76,14 @@ std::vector<std::string> singleByteXORFreqAnalysis(const std::string& encodedStr
 //      chi2threshold - Chi-square threshold for candidate acceptance
 //      printableCharThreshold - minimum ratio of printable chars required
 //      additionalInfo - if true, adds diagnostic info strings to results
+//      onlyBestFit - if true, return only the result with lowest Chi^2 (vector with single string)
 // Returns:
 //      Vector of candidate decoded strings passing frequency analysis
 //=============================================
 
-std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2threshold, double printableCharTreshhold, bool additionalInfo)
+std::vector<std::string> XOR_iterateKeys_str(std::string_view inputStr, int chi2threshold, double printableCharTreshhold, bool additionalInfo, bool onlyBestFit)
 {
+    double bestFit = std::numeric_limits<double>::max();
     std::vector<std::string> candidateStrings;
     for (int i = 0; i < 256; i++) {
         std::string tempStr(inputStr.length(), '\0');
@@ -98,22 +101,107 @@ std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2thr
 
         double fitQuotResult = singleKeyFittingQuotient(tempStr);
 
-        // List all decoded strings with sufficiently low Chi^2 
-        if (fitQuotResult < chi2threshold) {
-            if (additionalInfo) {
-                std::string info = "\nOriginal string (ASCII): " + inputStr;
-                candidateStrings.push_back(info);
-                info = "Original string (HEX): " + ASCII2hex(inputStr);
-                candidateStrings.push_back(info);
-                info = "Key (dec): " + std::to_string(i);
-                candidateStrings.push_back(info);
-                info = "Chi^2: " + std::to_string(fitQuotResult);
-                candidateStrings.push_back(info);
+        if (onlyBestFit) {
+            if (fitQuotResult < bestFit) {
+                bestFit = fitQuotResult;
+                candidateStrings.clear();
+                candidateStrings.push_back(tempStr);
             }
-            candidateStrings.push_back(tempStr);
+        } else {
+            if (fitQuotResult < chi2threshold) {
+                if (additionalInfo) {
+                    std::string info = "\nOriginal string (ASCII): " + std::string{ inputStr };
+                    candidateStrings.push_back(info);
+                    info = "Original string (HEX): " + ascii2hex(inputStr);
+                    candidateStrings.push_back(info);
+                    info = "Key (dec): " + std::to_string(i);
+                    candidateStrings.push_back(info);
+                    info = "Chi^2: " + std::to_string(fitQuotResult);
+                    candidateStrings.push_back(info);
+                }
+                candidateStrings.push_back(tempStr);
+            }
         }
     }
     return candidateStrings;
+}
+
+
+// Same as above but returns only keys (or only best key if onlyBestFit == true)
+
+std::vector<int> XOR_iterateKeys_keys(std::string_view inputStr, int chi2threshold, double printableCharTreshhold, bool onlyBestFit)
+{
+    double bestFit = std::numeric_limits<double>::max();
+    std::vector<int> candidateKeys;
+    for (int i = 0; i < 256; i++) {
+        std::string tempStr(inputStr.length(), '\0');
+        int letterOrSpaceCount = 0;
+        for (size_t j = 0; j < inputStr.length(); j++) {
+            char decoded = inputStr[j] ^ i;
+            tempStr[j] = decoded;
+            if (std::isalpha(static_cast<unsigned char>(decoded)) || decoded == ' ')
+                letterOrSpaceCount++;
+        }
+
+        // Only continue if certain anount of char in string is letters or spaces
+        if (static_cast<double>(letterOrSpaceCount) / inputStr.length() < printableCharTreshhold)
+            continue;
+
+        double fitQuotResult = singleKeyFittingQuotient(tempStr);
+
+        if (onlyBestFit) {
+            if (fitQuotResult < bestFit) {
+                bestFit = fitQuotResult;
+                candidateKeys.clear();
+                candidateKeys.push_back(i);
+            }
+        }
+        else {
+            if (fitQuotResult < chi2threshold) {
+                candidateKeys.push_back(i);
+            }
+        }
+    }
+    return candidateKeys;
+}
+
+
+// Same as above but returns only ch^2 metric (or only best ch^2 if onlyBestFit == true)
+
+std::vector<double> XOR_iterateKeys_chi2(std::string_view inputStr, int chi2threshold, double printableCharTreshhold, bool onlyBestFit)
+{
+    double bestFit = std::numeric_limits<double>::max();
+    std::vector<double> bestFits;
+    for (int i = 0; i < 256; i++) {
+        std::string tempStr(inputStr.length(), '\0');
+        int letterOrSpaceCount = 0;
+        for (size_t j = 0; j < inputStr.length(); j++) {
+            char decoded = inputStr[j] ^ i;
+            tempStr[j] = decoded;
+            if (std::isalpha(static_cast<unsigned char>(decoded)) || decoded == ' ')
+                letterOrSpaceCount++;
+        }
+
+        // Only continue if certain anount of char in string is letters or spaces
+        if (static_cast<double>(letterOrSpaceCount) / inputStr.length() < printableCharTreshhold)
+            continue;
+
+        double fitQuotResult = singleKeyFittingQuotient(tempStr);
+
+        if (onlyBestFit) {
+            if (fitQuotResult < bestFit) {
+                bestFit = fitQuotResult;
+                bestFits.clear();
+                bestFits.push_back(i);
+            }
+        }
+        else {
+            if (fitQuotResult < chi2threshold) {
+                bestFits.push_back(i);
+            }
+        }
+    }
+    return bestFits;
 }
 
 
@@ -126,7 +214,7 @@ std::vector<std::string> iterateXORKeys(const std::string& inputStr, int chi2thr
 //      Double value representing Chi-square fitting score (lower is better)
 //=============================================
 
-double singleKeyFittingQuotient(const std::string& inputStr) {
+double singleKeyFittingQuotient(std::string_view inputStr) {
     const std::string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ ";
     size_t strLen = inputStr.length();
     double singleStepFittingQuotient = 0;
@@ -165,7 +253,7 @@ double singleCharFittingQuotient(int inputStrLetterOccurance, int strLen, char l
 //      Number of occurrences of character c in inputStr
 //=============================================
 
-int countCharOccurance(const std::string& inputStr, char c) {
+int countCharOccurance(std::string_view inputStr, char c) {
     int counter = 0;
     for (char ch : inputStr) {
         if (std::toupper(static_cast<unsigned char>(ch)) == c)
@@ -209,8 +297,8 @@ double charFreqTable(char c) {
 //      character from the key (repeated as needed)
 //=============================================
 
-std::string repeatingKeyXOREncrypt(const std::string& inputStr, const std::string& key) {
-    std::string encryptedStr = inputStr;
+std::string XOR_repeatingKeyEncrypt(std::string_view inputStr, std::string_view key) {
+    std::string encryptedStr = std::string{ inputStr };
     size_t keyLen = key.length();
     size_t inputLen = inputStr.length();
     for (size_t i = 0; i < inputLen; i++) {

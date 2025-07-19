@@ -3,18 +3,22 @@
 
 #include <string>
 
-std::string base64ToHex(const std::string& base64Str);
-std::string base64ToBin(const std::string& base64Str);
-std::string hex2base64(const std::string& hexString);
-std::string bin2base64(const std::string& binString);
-std::string bin2hex(const std::string& binString);
-std::string hex2bin(const std::string& hexString);
+std::string base64ToHex(std::string_view base64Str);
+std::string base64ToBin(std::string_view base64Str);
+std::string hex2base64(std::string_view hexString);
+std::string bin2base64(std::string_view binString);
+std::string bin2hex(std::string_view binString);
+std::string hex2bin(std::string_view hexString);
 
-std::string hex2ASCII(const std::string& hexStr);
-std::string ASCII2hex(const std::string& asciiStr);
+std::string hex2ascii(std::string_view hexStr);
+std::string ascii2hex(std::string_view asciiStr);
+std::string bin2ascii(std::string_view binString);
+std::string ascii2bin(std::string_view asciiStr);
+std::string base64Toascii(std::string_view base64Str);
 
-std::string charbin2base64(const std::string& bin);
-char charbin2hex(const std::string& charBin);
+std::string charbin2base64(std::string_view bin);
+char charbin2hex(std::string_view charBin);
 std::string charhex2bin(char c);
 
 #endif // CONVERTERS_H
+

@@ -2,6 +2,7 @@
 #include <bitset>
 #include <algorithm>
 #include <cctype>
+#include <stdexcept>
 
 //=============================================
 // Base64 to hex converter
@@ -11,7 +12,7 @@
 //      Hexadecimal representation of decoded Base64 data
 //=============================================
 
-std::string base64ToHex(const std::string& base64Str)
+std::string base64ToHex(std::string_view base64Str)
 {
     std::string binString = base64ToBin(base64Str);
     return bin2hex(binString);
@@ -42,7 +43,7 @@ int base64CharToValue(char c) {
 //      Binary string representation of decoded Base64 data (6 bits per char)
 //=============================================
 
-std::string base64ToBin(const std::string& base64Str) {
+std::string base64ToBin(std::string_view base64Str) {
     size_t len = base64Str.length();
     std::string binString(len * 6, '0');
     for (size_t i = 0; i < len; i++) {
@@ -62,7 +63,7 @@ std::string base64ToBin(const std::string& base64Str) {
 //      Base64 encoded string representing input hex data
 //=============================================
 
-std::string hex2base64(const std::string& hexString)
+std::string hex2base64(std::string_view hexString)
 {
     std::string binString = hex2bin(hexString);
     std::string base64String = bin2base64(binString);
@@ -77,8 +78,8 @@ std::string hex2base64(const std::string& hexString)
 //      Base64 encoded string representing input binary data (with padding)
 //=============================================
 
-std::string bin2base64(const std::string& binString) {
-    std::string temp = binString;
+std::string bin2base64(std::string_view binString) {
+    std::string temp = std::string{ binString };
     std::string base64String;
     if (temp.length() % 6 > 0)
         temp.append(6 - temp.length() % 6, '0');
@@ -90,6 +91,7 @@ std::string bin2base64(const std::string& binString) {
     return base64String;
 }
 
+
 //=============================================
 // Binary (6-bit) to Base64 character lookup
 // Takes:
@@ -98,11 +100,13 @@ std::string bin2base64(const std::string& binString) {
 //      Corresponding Base64 character as string
 //=============================================
 
-std::string charbin2base64(const std::string& bin) {
-    static const std::string base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    int base64index = std::bitset<6>(bin).to_ulong();
-    return std::string(1, base64[base64index]);
+std::string charbin2base64(std::string_view bin) {
+    static const char base64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (bin.size() != 6) return "?";
+    int index = static_cast<int>(std::bitset<6>(std::string{ bin }).to_ulong());
+    return std::string(1, base64[index]);
 }
+
 
 //=============================================
 // Binary to hexadecimal converter
@@ -112,7 +116,7 @@ std::string charbin2base64(const std::string& bin) {
 //      Hexadecimal string representation of binary input
 //=============================================
 
-std::string bin2hex(const std::string& binString) {
+std::string bin2hex(std::string_view binString) {
     std::string hexString;
     for (int i = 0; i < binString.length(); i += 4) {
         hexString.append(std::string(1, charbin2hex(binString.substr(i, 4))));
@@ -128,25 +132,13 @@ std::string bin2hex(const std::string& binString) {
 //      Single hexadecimal character corresponding to input bits
 //=============================================
 
-char charbin2hex(const std::string& charBin) {
-    if (charBin == "0000") return '0';
-    if (charBin == "0001") return '1';
-    if (charBin == "0010") return '2';
-    if (charBin == "0011") return '3';
-    if (charBin == "0100") return '4';
-    if (charBin == "0101") return '5';
-    if (charBin == "0110") return '6';
-    if (charBin == "0111") return '7';
-    if (charBin == "1000") return '8';
-    if (charBin == "1001") return '9';
-    if (charBin == "1010") return 'A';
-    if (charBin == "1011") return 'B';
-    if (charBin == "1100") return 'C';
-    if (charBin == "1101") return 'D';
-    if (charBin == "1110") return 'E';
-    if (charBin == "1111") return 'F';
-    return '?';
+char charbin2hex(std::string_view charBin) {
+    static const char lookup[] = "0123456789ABCDEF";
+    if (charBin.size() != 4) return '?';
+    int val = static_cast<int>(std::bitset<4>(std::string{ charBin }).to_ulong());
+    return lookup[val];
 }
+
 
 //=============================================
 // Hexadecimal to binary converter
@@ -156,7 +148,7 @@ char charbin2hex(const std::string& charBin) {
 //      Binary string representation of hex input (4 bits per hex digit)
 //=============================================
 
-std::string hex2bin(const std::string& hexString) {
+std::string hex2bin(std::string_view hexString) {
     size_t len = hexString.length();
     std::string binString(len * 4, '0');
     for (size_t i = 0; i < len; i++) {
@@ -204,12 +196,20 @@ std::string charhex2bin(char c) {
 //      ASCII string decoded from hex input
 //=============================================
 
-std::string hex2ASCII(const std::string& hexStr) {
+std::string hex2ascii(std::string_view hexStr) {
+    auto hexCharToInt = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        throw std::invalid_argument("Invalid hex character");
+        };
+
     size_t len = hexStr.length();
-    std::string asciiStr(hexStr.length() / 2, '\0');
+    std::string asciiStr(len / 2, '\0');
     for (size_t i = 0; i < len; i += 2) {
-        std::string charHex = hexStr.substr(i, 2);
-        asciiStr[i / 2] = static_cast<char>(std::stoi(charHex, nullptr, 16));
+        int high = hexCharToInt(hexStr[i]);
+        int low = hexCharToInt(hexStr[i + 1]);
+        asciiStr[i / 2] = static_cast<char>((high << 4) | low);
     }
     return asciiStr;
 }
@@ -222,7 +222,7 @@ std::string hex2ASCII(const std::string& hexStr) {
 //      Hexadecimal string representation of ASCII data
 //=============================================
 
-std::string ASCII2hex(const std::string& asciiStr) {
+std::string ascii2hex(std::string_view asciiStr) {
     const char* hexChars = "0123456789abcdef";
     size_t len = asciiStr.length();
     std::string hexStr(len * 2, '\0');
@@ -232,4 +232,70 @@ std::string ASCII2hex(const std::string& asciiStr) {
         hexStr[2 * i + 1] = hexChars[c & 0x0F];      // second hex number
     }
     return hexStr;
+}
+
+
+//=============================================
+// Binary to ASCII converter
+// Takes:
+//      binString - binary string input (length must be a multiple of 8)
+// Returns:
+//      ASCII string corresponding to the binary input
+// Throws:
+//      std::invalid_argument if binString length is not a multiple of 8
+//=============================================
+
+std::string bin2ascii(std::string_view binString) {
+    if (binString.size() % 8 != 0) {
+        throw std::invalid_argument("String not divisible by 8");
+    }
+    std::string result;
+    result.reserve(binString.size() / 8);
+    for (size_t i = 0; i < binString.size(); i += 8) {
+        char c = static_cast<char>(std::bitset<8>(std::string{ binString.substr(i, 8) }).to_ulong());
+        result.push_back(c);
+    }
+    return result;
+}
+
+
+//=============================================
+// ASCII to binary converter
+// Takes:
+//      asciiStr - ASCII string input
+// Returns:
+//      Concatenated binary string representation of the entire ASCII string
+//=============================================
+
+std::string ascii2bin(std::string_view asciiStr) {
+    std::string result;
+    result.reserve(asciiStr.size() * 8);
+    for (char c : asciiStr) {
+        result += std::bitset<8>(c).to_string();
+    }
+    return result;
+}
+
+
+//=============================================
+// Base64 to ASCII converter
+// Takes:
+//      base64Str - Base64 encoded string
+// Returns:
+//      ASCII string decoded from Base64 input
+//=============================================
+
+std::string base64Toascii(std::string_view base64Str) {
+    std::string binString = base64ToBin(base64Str);
+    size_t totalBits = (base64Str.length() * 6);
+    size_t paddingChars = 0;
+    if (!base64Str.empty()) {
+        if (base64Str.back() == '=') paddingChars++;
+        if (base64Str.length() > 1 && base64Str[base64Str.length() - 2] == '=') paddingChars++;
+    }
+    totalBits -= paddingChars * 6;
+    totalBits = (totalBits / 8) * 8;
+    binString.resize(totalBits);
+
+    return bin2ascii(binString);
 }
