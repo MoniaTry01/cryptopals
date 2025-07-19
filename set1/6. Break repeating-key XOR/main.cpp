@@ -9,13 +9,15 @@
 #include "xor_utils.h"
 
 
-int getHammingDistance(const std::string_view inputStr1, const std::string_view inputStr2);
+int getHammingDistance(std::string_view inputStr1, std::string_view inputStr2);
 std::vector<int> bruteForceKeysize(const std::string_view inputStr, int minKeysize, int maxKeysize, int noOfBlocks, int noOfKeys);
 std::vector<std::string> transposeVector(const std::vector<std::string>& blocks, int keysize);
+std::string getBestKey(const std::vector<std::string>& finalKeys);
+std::string getKeyForKeysize(int keysize, const std::string& decodedData);
 
 int main()
 {
-    // Get input data from file
+    // Get input data from the file
     std::string filename = "6.txt";
     std::ifstream inputFile(filename);
     if (!inputFile.is_open()) {
@@ -28,86 +30,38 @@ int main()
     }
     inputFile.close();
 
-    // Get potential keysizes
-    // The number of candidate keysizes is defined in noOfKeysizes
+    // Get candidate keysizes
+    // The number of candidate keysizes is defined by noOfKeysizes
     std::string decodedData = base64Toascii(base64Data);
     const int minKeysize = 2;
     const int maxKeysize = 40;
-    const int noOfBlocks = 8;
+    const int noOfBlockPairs = 4;
     const int noOfKeysizes = 3;
-    std::vector<int> candidateKeysizes = bruteForceKeysize(decodedData, minKeysize, maxKeysize, noOfBlocks, noOfKeysizes);
+    std::vector<int> candidateKeysizes = bruteForceKeysize(decodedData, minKeysize, maxKeysize, noOfBlockPairs, noOfKeysizes);
 
     std::cout << "Candidate keysizes: ";
     for (int keysize : candidateKeysizes) {
         std::cout << keysize << " ";
     }
-    std::cout << std::endl;
+    std::cout << "\n";
 
-    // Transpose data vector and get keys for each block
+    // Transpose the blocks in encoded text and get key for each group of blocks
     // Try for each candidate keysize
 
     std::vector<std::string> finalKeys;
-    std::vector<std::string> blocks;
 
     for (int i = 0; i < noOfKeysizes; ++i) {
-        std::cout << std::endl << "Single XOR keys for keysize == " << candidateKeysizes[i] << ": " << std::endl;
+        std::cout << "\nSingle XOR keys for keysize == " << candidateKeysizes[i] << ": \n";
         int keysize = candidateKeysizes[i];
-        blocks.clear();
-        for (size_t j = 0; j + keysize <= decodedData.size(); j += keysize) {
-            blocks.push_back(decodedData.substr(j, keysize));
-        }
-
-        auto transposedVector = transposeVector(blocks, keysize);
-
-        int chi2threshold = 40;
-        double printableCharTreshhold = 0.7;
-        bool onlyBestFit = true;
-        std::vector<int> singleXORKeys; // keys for each block
-
-        for (const auto& block : transposedVector) {
-            std::string_view blockView(block);
-            auto key = XOR_iterateKeys_keys(blockView, chi2threshold, printableCharTreshhold, onlyBestFit);
-            if (!key.empty()) {
-                singleXORKeys.push_back(key[0]);
-                std::cout << key[0] << " ";
-            }
-            else {
-                singleXORKeys.clear();
-                continue;
-            }
-        }
-
-        if (singleXORKeys.empty()) {
-            std::cout << "Could not find key" << std::endl;
-            continue;
-        }
-        else {
-            std::string fullKeyStr; // store full key for current keysize
-            fullKeyStr.reserve(singleXORKeys.size());
-
-            for (int k : singleXORKeys) {
-                fullKeyStr += static_cast<char>(k);
-            }
-
-            std::cout << std::endl << "Key for keysize = " << std::to_string(candidateKeysizes[i]) << ": " << fullKeyStr << std::endl;
-            finalKeys.push_back(fullKeyStr);
-        }
+        std::string fullKeyStr = getKeyForKeysize(keysize, decodedData);
+        std::cout << "\nKey for keysize = " << std::to_string(candidateKeysizes[i]) << ": " << fullKeyStr << "\n";
+        finalKeys.push_back(fullKeyStr);
     }
 
-    double bestKeyChi2 = std::numeric_limits<double>::max();
-    std::string bestKey;
-    for (auto s : finalKeys) {
-        int chi2threshold = 40;
-        double printableCharTreshhold = 0.7;
-        bool onlyBestFit = true;
-        std::vector<double> chi2 = XOR_iterateKeys_chi2(s, chi2threshold, printableCharTreshhold, onlyBestFit);
-        if (chi2[0] < bestKeyChi2) {
-            bestKeyChi2 = chi2[0];
-            bestKey = s;
-        }
-    }
+    std::string bestKey = getBestKey(finalKeys);
+    std::cout << "\nBest key: " << bestKey << "\n";
 
-    std::cout << std::endl << "Best key: " << bestKey << std::endl;
+    // Final decoded text is written to output.txt
 
     std::string decryptedText = XOR_repeatingKeyEncrypt(decodedData, bestKey);
     filename = "output.txt";
@@ -129,7 +83,7 @@ int main()
         }
     }
     catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error: " << e.what() << "\n";
     }
 
     return 0;
@@ -144,7 +98,7 @@ int getHammingDistance(std::string_view inputStr1, std::string_view inputStr2) {
     return distance;
 }
 
-std::vector<int> bruteForceKeysize(const std::string_view inputStr, int minKeysize, int maxKeysize, int noOfBlocks, int noOfKeys) {
+std::vector<int> bruteForceKeysize(const std::string_view inputStr, int minKeysize, int maxKeysize, int noOfBlockPairs, int noOfKeys) {
 
     struct result {
         double normDistance;
@@ -158,20 +112,21 @@ std::vector<int> bruteForceKeysize(const std::string_view inputStr, int minKeysi
 
     for (int keysize = minKeysize; keysize <= maxKeysize; keysize++) {
         int blockHamDist = 0;
-        for (int i = 0; i < noOfBlocks; i++) {
+        for (int i = 0; i < noOfBlockPairs; i++) {
             if ((2 * keysize * i) + (2 * keysize) > inputStr.length()) break;
             blockHamDist += getHammingDistance(inputStr.substr(2 * keysize * i, keysize), inputStr.substr(2 * keysize * i + keysize, keysize));
         }
-        results.push_back({ (double)blockHamDist / (keysize * noOfBlocks), keysize });
+        results.push_back({ (double)blockHamDist / (keysize * noOfBlockPairs), keysize });
     }
 
     std::sort(results.begin(), results.end(), [](const result& a, const result& b) {
         return a.normDistance < b.normDistance;
     });
 
+    // Get [noOfKeys] number of keys with lowest Chi^2 score
     std::vector<int> finalKeysizes;
     for (size_t i = 0; i < noOfKeys; ++i) {
-        finalKeysizes.push_back(results[noOfKeys - (i + 1)].keyLen);
+        finalKeysizes.push_back(results[i].keyLen);
     }
     
     return finalKeysizes;
@@ -185,4 +140,66 @@ std::vector<std::string> transposeVector(const std::vector<std::string>& blocks,
         }
     }
     return transposed;
+}
+
+std::string getBestKey(const std::vector<std::string>& finalKeys) {
+    double bestKeyChi2 = std::numeric_limits<double>::max();
+    std::string bestKey;
+
+    const int chi2threshold = 40;
+    const double printableCharTreshhold = 0.7;
+    const bool onlyBestFit = true;
+
+    for (const auto& s : finalKeys) {
+        auto chi2 = XOR_iterateKeys_chi2(s, chi2threshold, printableCharTreshhold, onlyBestFit);
+        if (!chi2.empty() && chi2[0] < bestKeyChi2) {
+            bestKeyChi2 = chi2[0];
+            bestKey = s;
+        }
+    }
+    return bestKey;
+}
+
+std::string getKeyForKeysize(int keysize, const std::string& decodedData) {
+
+    std::string fullKeyStr; // store full key for current keysize
+    std::vector<std::string> blocks;
+    blocks.clear();
+
+    for (size_t j = 0; j + keysize <= decodedData.size(); j += keysize) {   // separate the text in blocks, block length == keysize
+        blocks.push_back(decodedData.substr(j, keysize));
+    }
+
+    auto transposedVector = transposeVector(blocks, keysize);   // realign blocks, so the blocks that can be deciphered by the same single-byte key are grouped
+
+    const int chi2threshold = 40;
+    const double printableCharTreshhold = 0.7;
+    const bool onlyBestFit = true;
+    std::vector<int> singleXORKeys; // keys for each group of blocks
+
+    for (const auto& block : transposedVector) {
+        std::string_view blockView(block);
+        auto key = XOR_iterateKeys_keys(blockView, chi2threshold, printableCharTreshhold, onlyBestFit); // find key for a group of blocks
+        if (!key.empty()) {                         // if at some point key is returned empty, that means that XOR_iterateKeys_keys couldn't find the key
+            singleXORKeys.push_back(key[0]);        // with sufficiently low chi^2 metric, which means finding key is impossible for given tresholds
+            std::cout << key[0] << " ";             // Break the loop, to avoid returning incomplete key
+        }
+        else {
+            singleXORKeys.clear();
+            continue;
+        }
+    }
+
+    if (singleXORKeys.empty()) {
+        fullKeyStr.clear();
+    }
+    else {
+        fullKeyStr.reserve(singleXORKeys.size());
+
+        for (int k : singleXORKeys) {
+            fullKeyStr += static_cast<char>(k);
+        }
+    }
+
+    return fullKeyStr;
 }
